@@ -1,4 +1,4 @@
-"""命令行入口：list / run / check / calibrate。"""
+"""CLI entry point: list / run / check / calibrate."""
 
 from __future__ import annotations
 
@@ -7,47 +7,47 @@ import time
 
 from .config import load_device, load_gestures
 from .device import DeviceConfig, open_hand, wait_for_enter_or_ctrl_c
-from .joints import JOINT_NAMES, JOINT_NAMES_CN, NUM_JOINTS
+from .joints import JOINT_NAMES, NUM_JOINTS
 from .sequence import SequenceConfig, move_to, run_sequence
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="l20_gestures",
-        description="L20 灵巧手手势序列执行器",
+        description="Gesture sequence runner for the LinkerHand L20 dexterous hand",
     )
-    parser.add_argument("--dry-run", action="store_true", help="不连硬件，只打印指令")
-    parser.add_argument("--side", choices=["left", "right"], help="覆盖配置里的左右手")
-    parser.add_argument("--interface-type", help="覆盖 CAN 适配器类型，如 pcan / socketcan")
-    parser.add_argument("--interface-name", help="覆盖 CAN 接口名，如 PCAN_USBBUS1 / can0")
+    parser.add_argument("--dry-run", action="store_true", help="print commands, no hardware")
+    parser.add_argument("--side", choices=["left", "right"], help="override the configured hand")
+    parser.add_argument("--interface-type", help="override the CAN adapter type (pcan / socketcan)")
+    parser.add_argument("--interface-name", help="override the CAN interface (PCAN_USBBUS1 / can0)")
 
     sub = parser.add_subparsers(dest="command", required=True)
 
-    sub.add_parser("list", help="列出手势和关节表")
+    sub.add_parser("list", help="list gestures and the joint layout")
 
-    run = sub.add_parser("run", help="按顺序执行手势")
-    run.add_argument("--sequence", required=True, help="逗号分隔的手势名，如 open,fist,ok")
-    run.add_argument("--transition", type=float, help="手势间过渡时长（秒）")
-    run.add_argument("--hold", type=float, help="每个手势保持时长（秒）")
-    run.add_argument("--no-wait", action="store_true", help="跳过按 Enter 确认")
+    run = sub.add_parser("run", help="execute gestures in order")
+    run.add_argument("--sequence", required=True, help="comma-separated names, e.g. open,fist,ok")
+    run.add_argument("--transition", type=float, help="seconds to blend between gestures")
+    run.add_argument("--hold", type=float, help="seconds to hold each gesture")
+    run.add_argument("--no-wait", action="store_true", help="skip the Enter confirmation")
 
-    check = sub.add_parser("check", help="连接设备并读取当前角度")
+    check = sub.add_parser("check", help="connect and read the current joint angles")
     check.add_argument("--timeout-ms", type=int, default=500)
 
-    cali = sub.add_parser("calibrate", help="单独扫动一个关节，确认数值方向")
-    cali.add_argument("--joint", required=True, help="关节名，如 index_root1")
-    cali.add_argument("--duration", type=float, default=3.0, help="单向扫动时长（秒）")
-    cali.add_argument("--no-wait", action="store_true", help="跳过按 Enter 确认")
+    cali = sub.add_parser("calibrate", help="sweep one joint to confirm the value direction")
+    cali.add_argument("--joint", required=True, help="joint name, e.g. index_root1")
+    cali.add_argument("--duration", type=float, default=3.0, help="seconds for one sweep")
+    cali.add_argument("--no-wait", action="store_true", help="skip the Enter confirmation")
 
     return parser
 
 
 def cmd_list(gestures: dict) -> None:
-    print("关节顺序：")
-    for index, (name, name_cn) in enumerate(zip(JOINT_NAMES, JOINT_NAMES_CN)):
-        print(f"  {index:2d}  {name:16s} {name_cn}")
+    print("Joint order:")
+    for index, name in enumerate(JOINT_NAMES):
+        print(f"  {index:2d}  {name}")
 
-    print("\n可用手势：")
+    print("\nAvailable gestures:")
     for name, data in gestures.items():
         print(f"  {name:12s} {data.get('desc', '')}")
 
@@ -84,14 +84,14 @@ def cmd_run(args, gestures: dict) -> None:
 def cmd_check(args, device_cfg: DeviceConfig) -> None:
     with open_hand(device_cfg) as hand:
         angles = hand.read_angles()
-    print("当前角度：")
+    print("Current angles:")
     for name, value in zip(JOINT_NAMES, angles):
         print(f"  {name:16s} {value:6.1f}")
 
 
 def cmd_calibrate(args, device_cfg: DeviceConfig, seq_cfg: SequenceConfig) -> None:
     if args.joint not in JOINT_NAMES:
-        raise SystemExit(f"未知关节 {args.joint}，可用：{', '.join(JOINT_NAMES)}")
+        raise SystemExit(f"unknown joint {args.joint}; available: {', '.join(JOINT_NAMES)}")
     index = JOINT_NAMES.index(args.joint)
 
     if not args.no_wait:
@@ -110,10 +110,10 @@ def cmd_calibrate(args, device_cfg: DeviceConfig, seq_cfg: SequenceConfig) -> No
         print(f"[calibrate] {args.joint} -> 100")
         move_to(hand, high, low, args.duration, seq_cfg.fps)
         time.sleep(0.5)
-        print(f"[calibrate] 回到中立位 50")
+        print(f"[calibrate] {args.joint} -> 50 (neutral)")
         move_to(hand, start, high, args.duration, seq_cfg.fps)
 
-    print("记住哪个方向是伸直、哪个是弯曲，直接改 config/gestures.yaml。")
+    print("Note which end is extended and which is flexed, then edit config/gestures.yaml.")
 
 
 def main(argv=None) -> None:

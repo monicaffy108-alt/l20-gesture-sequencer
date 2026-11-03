@@ -1,6 +1,7 @@
-"""设备层：把 linkerbot SDK 包一层，方便切换真机 / dry-run。
+"""Device layer: a thin wrapper around the linkerbot SDK.
 
-SDK 采用延迟导入，没有装 linkerbot 或没有接硬件时，dry-run 依然能跑。
+The SDK is imported lazily, so dry-run keeps working without linkerbot
+installed or without hardware attached.
 """
 
 from __future__ import annotations
@@ -27,7 +28,7 @@ class DeviceConfig:
 
 
 class DryRunHand:
-    """不连硬件，把指令打印出来。用于验证序列逻辑。"""
+    """Prints commands instead of talking to hardware. Used to check sequences."""
 
     def __init__(self, config: DeviceConfig):
         self.config = config
@@ -53,7 +54,7 @@ class DryRunHand:
 
 
 class LinkerHand:
-    """真机后端，封装 linkerbot.L25。"""
+    """Real hardware backend, wrapping linkerbot.L25."""
 
     def __init__(self, config: DeviceConfig):
         self.config = config
@@ -62,10 +63,10 @@ class LinkerHand:
     def __enter__(self) -> "LinkerHand":
         try:
             from linkerbot import L25
-        except ImportError as exc:  # pragma: no cover - 取决于本机环境
+        except ImportError as exc:  # pragma: no cover - depends on the local env
             raise SystemExit(
-                "没有找到 linkerbot SDK，请先执行：pip install linkerbot\n"
-                "如果只想验证序列逻辑，可以加 --dry-run 参数。"
+                "linkerbot SDK not found. Install it first: pip install linkerbot\n"
+                "To check sequence logic without hardware, add --dry-run."
             ) from exc
 
         try:
@@ -77,12 +78,14 @@ class LinkerHand:
             self._hand.__enter__()
         except Exception as exc:
             raise SystemExit(
-                f"连接失败：{exc}\n"
-                "排查顺序：\n"
-                "  1. 关掉所有占用 CAN 的程序（Windows 上位机、PCAN-View、灵巧手控制台网页）\n"
-                f"  2. 确认接口名正确，当前为 {self.config.interface_type}:{self.config.interface_name}\n"
-                "     可用 python -c \"import can;print(can.detect_available_configs())\" 查询\n"
-                "  3. 只想验证序列逻辑，加 --dry-run"
+                f"connection failed: {exc}\n"
+                "Checklist:\n"
+                "  1. Close every program using the CAN adapter "
+                "(vendor GUI, PCAN-View, browser control panel)\n"
+                f"  2. Confirm the interface name; currently "
+                f"{self.config.interface_type}:{self.config.interface_name}\n"
+                '     Query it with: python -c "import can;print(can.detect_available_configs())"\n'
+                "  3. To check sequence logic only, add --dry-run"
             ) from None
         return self
 
@@ -104,8 +107,8 @@ def open_hand(config: DeviceConfig, dry_run: bool = False):
 
 
 def wait_for_enter_or_ctrl_c() -> None:
-    """真机调试时给用户一点反应时间，避免上电瞬间猛动。"""
-    print("按 Enter 开始执行，Ctrl+C 退出……")
+    """Give the operator a moment before the hand starts moving."""
+    print("Press Enter to start, Ctrl+C to abort...")
     try:
         sys.stdin.readline()
     except KeyboardInterrupt:

@@ -1,4 +1,4 @@
-"""序列执行层：手势之间的线性插值 + 定时下发。"""
+"""Sequence layer: linear interpolation between gestures plus timed updates."""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ def blend(start: list[float], end: list[float], ratio: float) -> list[float]:
 
 
 def move_to(hand, target, start, duration: float, fps: int) -> list[float]:
-    """从 start 平滑过渡到 target，返回终点状态。"""
+    """Move smoothly from start to target and return the end state."""
     steps = max(1, int(duration * fps))
     period = 1.0 / fps
     for step in range(1, steps + 1):
@@ -42,11 +42,11 @@ def move_to(hand, target, start, duration: float, fps: int) -> list[float]:
 
 def run_sequence(hand, gestures: dict, names: list[str], config: SequenceConfig, start=None) -> None:
     if not names:
-        raise ValueError("序列为空")
+        raise ValueError("empty sequence")
 
     missing = [name for name in names if name not in gestures]
     if missing:
-        raise ValueError(f"未知手势：{missing}，可用手势：{sorted(gestures)}")
+        raise ValueError(f"unknown gestures: {missing}; available: {sorted(gestures)}")
 
     current = validate(start) if start is not None else [50.0] * NUM_JOINTS
 
