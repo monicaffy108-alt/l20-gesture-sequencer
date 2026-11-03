@@ -21,7 +21,7 @@ l20-gesture-sequencer/
 │   ├── joints.py         # joint order and range validation
 │   ├── config.py         # config loading
 │   ├── device.py         # hardware backend / dry-run backend
-│   ├── force.py          # per-finger pressure metrics, contact detection
+│   ├── force.py          # contact signals: pressure, torque, tracking error
 │   ├── sequence.py       # linear interpolation + timed updates
 │   └── cli.py            # command-line entry point
 └── requirements.txt
@@ -80,19 +80,29 @@ python -m l20_gestures run --sequence relax,open,fist,open,point,ok,thumbs_up,op
 ### Closed-loop grasp
 
 ```bash
-# Read live pressure per finger, to pick a threshold
-python -m l20_gestures force --duration 5
+# Inspect the available contact signals
+python -m l20_gestures torque --duration 5
+python -m l20_gestures force --raw --duration 5
 
-# Close until a finger touches, hold, then release
-python -m l20_gestures grasp --target fist --threshold 30
+# Close until contact, hold, then release
+python -m l20_gestures grasp --source angle_error
 ```
 
-The loop captures a pressure baseline in the open pose, then closes in fixed increments. As soon as any monitored finger rises above `threshold`, closing stops, the hand backs off one increment (so the object is held rather than crushed), holds for `grasp.hold`, and returns to the open pose.
+The loop closes in fixed increments from the open pose and stops as soon as contact is detected, then backs off one increment (so the object is held rather than crushed), holds for `grasp.hold`, and returns to the open pose.
 
-Thresholds are raw sensor units (0-255), so they must be calibrated per hand with `force`. Restrict which fingers trigger the stop:
+Three contact signals are supported:
+
+| `--source` | Signal | Notes |
+|-----------|--------|-------|
+| `angle_error` | lag between commanded and measured angle (degrees) | Default. Works on any hand; no extra sensor needed |
+| `torque` | joint torque rise (SDK's 0-100 units) | Reported torques may reflect the commanded value rather than the load |
+| `force` | fingertip pressure (raw 0-255 matrix) | Only on hands that actually report pressure |
+
+On this L20 unit the pressure matrices read zero even under firm fingertip contact, so `angle_error` is the default. Verify per unit before relying on either sensor:
 
 ```bash
-python -m l20_gestures grasp --fingers thumb,index --threshold 40
+python -m l20_gestures grasp --source torque --torque-threshold 20
+python -m l20_gestures grasp --fingers thumb,index --tolerance 15
 ```
 
 Command-line flags temporarily override the config:
@@ -114,8 +124,9 @@ Every gesture was executed on a physical L20 (left hand, Windows + PCAN-USB) and
 
 | Feature | Status |
 |---------|--------|
-| `grasp` closed loop (synthetic sensor) | Verified with `--dry-run`; stops at 40% closure |
-| `grasp` closed loop (real sensor) | Not yet measured; threshold needs calibration with `force` |
+| `grasp` with `angle_error` | Verified with `--dry-run` (stops at 70% closure); hardware run pending |
+| Fingertip pressure (`force`) | This unit returns a zero matrix under firm contact; not usable as a contact signal |
+| `grasp` with `torque` | Untested on hardware |
 
 Tuning history is recorded in the comments of `config/gestures.yaml`: thumb rotation `yaw` settled at 70 (30 was too far inward, 95 too far outward) and abduction `abd` at 65.
 

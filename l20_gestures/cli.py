@@ -7,7 +7,7 @@ import time
 
 from .config import load_device, load_gestures, load_grasp
 from .device import DeviceConfig, open_hand, wait_for_enter_or_ctrl_c
-from .force import FINGERS, GraspConfig, close_until_contact
+from .force import FINGERS, SOURCES, GraspConfig, close_until_contact, torque_metrics
 from .joints import JOINT_NAMES, NUM_JOINTS
 from .sequence import SequenceConfig, move_to, run_sequence
 
@@ -43,15 +43,25 @@ def build_parser() -> argparse.ArgumentParser:
     force = sub.add_parser("force", help="print live force sensor readings")
     force.add_argument("--duration", type=float, default=5.0, help="seconds to sample")
     force.add_argument("--interval", type=float, default=0.1, help="seconds between samples")
+    force.add_argument("--raw", action="store_true",
+                       help="print raw matrix stats and issue fresh requests")
 
     grasp = sub.add_parser("grasp", help="close until a finger registers contact")
     grasp.add_argument("--target", help="gesture to close towards (default from config)")
+    grasp.add_argument("--source", choices=SOURCES,
+                       help="contact signal: force, torque or angle_error")
     grasp.add_argument("--steps", type=int, help="increments from open to target")
     grasp.add_argument("--interval", type=float, help="seconds between increments")
-    grasp.add_argument("--threshold", type=int, help="pressure delta counted as contact")
+    grasp.add_argument("--threshold", type=float, help="pressure delta counted as contact")
+    grasp.add_argument("--torque-threshold", type=float, help="torque delta counted as contact")
+    grasp.add_argument("--tolerance", type=float, help="tracking lag in degrees counted as contact")
     grasp.add_argument("--fingers", help="comma-separated subset, e.g. thumb,index")
     grasp.add_argument("--hold", type=float, help="seconds to hold the grip")
     grasp.add_argument("--no-wait", action="store_true", help="skip the Enter confirmation")
+
+    torque = sub.add_parser("torque", help="print live joint torque readings")
+    torque.add_argument("--duration", type=float, default=5.0, help="seconds to sample")
+    torque.add_argument("--interval", type=float, default=0.1, help="seconds between samples")
 
     return parser
 
@@ -131,12 +141,38 @@ def cmd_calibrate(args, device_cfg: DeviceConfig, seq_cfg: SequenceConfig) -> No
 
 
 def cmd_force(args, device_cfg: DeviceConfig, dry_run: bool) -> None:
+    if args.raw:
+        print("              " + " ".join(f"{finger:>15s}" for finger in FINGERS))
+        print("              " + " ".join(f"{'max/sum':>15s}" for _ in FINGERS))
+    else:
+        print("          " + " ".join(f"{finger:>7s}" for finger in FINGERS))
+
+    with open_hand(device_cfg, dry_run=dry_run) as hand:
+        end = time.monotonic() + args.duration
+        while time.monotonic() < end:
+            if args.raw:
+                matrices = hand.read_force_matrices()
+                cells = []
+                for finger in FINGERS:
+                    matrix = matrices[finger]
+                    if matrix is None:
+                        cells.append(f"{'n/a':>15s}")
+                    else:
+                        cells.append(f"{int(matrix.max()):>7d}/{int(matrix.sum()):<7d}")
+                print("  " + " ".join(cells))
+            else:
+                metrics = hand.read_force(fresh=True)
+                print("  " + " ".join(f"{metrics[finger]:7d}" for finger in FINGERS))
+            time.sleep(args.interval)
+
+
+def cmd_torque(args, device_cfg: DeviceConfig, dry_run: bool) -> None:
     print("          " + " ".join(f"{finger:>7s}" for finger in FINGERS))
     with open_hand(device_cfg, dry_run=dry_run) as hand:
         end = time.monotonic() + args.duration
         while time.monotonic() < end:
-            metrics = hand.read_force()
-            print("  " + " ".join(f"{metrics[finger]:7d}" for finger in FINGERS))
+            metrics = torque_metrics(hand.read_torque())
+            print("  " + " ".join(f"{metrics[finger]:7.1f}" for finger in FINGERS))
             time.sleep(args.interval)
 
 
@@ -145,12 +181,18 @@ def cmd_grasp(args, gestures: dict, device_cfg: DeviceConfig,
     config = GraspConfig.from_dict(load_grasp())
     if args.target:
         config.target = args.target
+    if args.source:
+        config.source = args.source
     if args.steps is not None:
         config.steps = args.steps
     if args.interval is not None:
         config.interval = args.interval
     if args.threshold is not None:
         config.threshold = args.threshold
+    if args.torque_threshold is not None:
+        config.torque_threshold = args.torque_threshold
+    if args.tolerance is not None:
+        config.tolerance = args.tolerance
     if args.hold is not None:
         config.hold = args.hold
     if args.fingers:
@@ -177,8 +219,8 @@ def cmd_grasp(args, gestures: dict, device_cfg: DeviceConfig,
 
         if result["finger"]:
             print(
-                f"contact: {result['finger']} +{result['delta']} "
-                f"at {result['ratio'] * 100:.0f}% closure"
+                f"contact ({result['source']}): {result['finger']} "
+                f"{result['value']:.1f} at {result['ratio'] * 100:.0f}% closure"
             )
         else:
             print(f"no contact within {config.steps} steps ({result['ratio'] * 100:.0f}% closure)")
@@ -206,5 +248,7 @@ def main(argv=None) -> None:
         cmd_calibrate(args, device_cfg, seq_cfg)
     elif args.command == "force":
         cmd_force(args, device_cfg, args.dry_run)
+    elif args.command == "torque":
+        cmd_torque(args, device_cfg, args.dry_run)
     elif args.command == "grasp":
         cmd_grasp(args, gestures, device_cfg, seq_cfg, args.dry_run)

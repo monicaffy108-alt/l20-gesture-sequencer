@@ -51,7 +51,12 @@ class DryRunHand:
         print(f"[dry-run] {text}")
 
     def read_angles(self) -> list[float]:
-        return list(self._last)
+        # Simulated obstacle: joints cannot close past 45 degrees.
+        return [max(value, 45.0) if value == value else value for value in self._last]
+
+    def read_torque(self) -> list[float]:
+        return [round(max(0.0, (100.0 - value) if value == value else 0.0) * 0.5, 1)
+                for value in self._last]
 
     def read_force(self) -> dict[str, int]:
         """Synthetic pressure: a finger starts reading non-zero at 30% flexion."""
@@ -61,6 +66,9 @@ class DryRunHand:
             finger: min(255, max(0, int((flexion(self._last, finger) - 30) * 3)))
             for finger in FINGERS
         }
+
+    def read_force_matrices(self) -> dict:
+        return {finger: None for finger in FINGERS}
 
 
 class LinkerHand:
@@ -111,16 +119,29 @@ class LinkerHand:
         data = self._hand.angle.get_blocking(timeout_ms=500)
         return validate(data.angles.to_list())
 
-    def read_force(self) -> dict[str, int]:
+    def read_force(self, fresh: bool = False) -> dict[str, int]:
         """Peak pressure cell per finger, as raw units (0-255).
 
-        Uses the cached snapshot filled by the SDK's 30 Hz polling loop and
-        falls back to a blocking read before the cache is warm.
+        Uses the cached snapshot filled by the SDK's 30 Hz polling loop. With
+        ``fresh=True`` it issues a blocking request instead, which bypasses a
+        possibly stale cache.
         """
-        snapshot = self._hand.force_sensor.get_snapshot()
+        snapshot = None
+        if not fresh:
+            snapshot = self._hand.force_sensor.get_snapshot()
         if snapshot is None:
             snapshot = self._hand.force_sensor.get_blocking(timeout_ms=800)
         return {finger: int(getattr(snapshot, finger).values.max()) for finger in FINGERS}
+
+    def read_force_matrices(self) -> dict:
+        """Raw 12x6 sensor matrices per finger, from a blocking request."""
+        data = self._hand.force_sensor.get_blocking(timeout_ms=1000)
+        return {finger: getattr(data, finger).values for finger in FINGERS}
+
+    def read_torque(self) -> list[float]:
+        """Joint torques in the same order as JOINT_NAMES."""
+        data = self._hand.torque.get_blocking(timeout_ms=800)
+        return validate(data.torques.to_list())
 
 
 def open_hand(config: DeviceConfig, dry_run: bool = False):
