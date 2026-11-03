@@ -20,3 +20,14 @@ sequence:
   fps: 25                   # command rate, 25-50 is stable in practice
   transition: 0.6           # seconds to blend between two gestures
   hold: 0.8                 # seconds to hold each gesture
+
+# Closed-loop grasp: close step by step and stop as soon as a finger
+# registers contact. Values are raw sensor units (0-255), so the threshold
+# must be calibrated on the target hand with `python -m l20_gestures force`.
+grasp:
+  target: "fist"            # gesture the hand closes towards
+  steps: 20                 # increments from open to target
+  interval: 0.15            # seconds between increments
+  threshold: 30             # pressure delta counted as contact
+  fingers: ["thumb", "index", "middle", "ring", "pinky"]
+  hold: 1.0                 # seconds to hold the grip after contact

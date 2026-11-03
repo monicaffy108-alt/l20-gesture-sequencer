@@ -28,3 +28,8 @@ def load_gestures(path: Path | None = None) -> dict:
 def load_device(path: Path | None = None) -> tuple[dict, dict]:
     data = load_yaml(path or CONFIG_DIR / "device.yaml")
     return data.get("device") or {}, data.get("sequence") or {}
+
+
+def load_grasp(path: Path | None = None) -> dict:
+    data = load_yaml(path or CONFIG_DIR / "device.yaml")
+    return data.get("grasp") or {}

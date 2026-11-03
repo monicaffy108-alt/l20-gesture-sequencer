@@ -5,8 +5,9 @@ from __future__ import annotations
 import argparse
 import time
 
-from .config import load_device, load_gestures
+from .config import load_device, load_gestures, load_grasp
 from .device import DeviceConfig, open_hand, wait_for_enter_or_ctrl_c
+from .force import FINGERS, GraspConfig, close_until_contact
 from .joints import JOINT_NAMES, NUM_JOINTS
 from .sequence import SequenceConfig, move_to, run_sequence
 
@@ -38,6 +39,19 @@ def build_parser() -> argparse.ArgumentParser:
     cali.add_argument("--joint", required=True, help="joint name, e.g. index_root1")
     cali.add_argument("--duration", type=float, default=3.0, help="seconds for one sweep")
     cali.add_argument("--no-wait", action="store_true", help="skip the Enter confirmation")
+
+    force = sub.add_parser("force", help="print live force sensor readings")
+    force.add_argument("--duration", type=float, default=5.0, help="seconds to sample")
+    force.add_argument("--interval", type=float, default=0.1, help="seconds between samples")
+
+    grasp = sub.add_parser("grasp", help="close until a finger registers contact")
+    grasp.add_argument("--target", help="gesture to close towards (default from config)")
+    grasp.add_argument("--steps", type=int, help="increments from open to target")
+    grasp.add_argument("--interval", type=float, help="seconds between increments")
+    grasp.add_argument("--threshold", type=int, help="pressure delta counted as contact")
+    grasp.add_argument("--fingers", help="comma-separated subset, e.g. thumb,index")
+    grasp.add_argument("--hold", type=float, help="seconds to hold the grip")
+    grasp.add_argument("--no-wait", action="store_true", help="skip the Enter confirmation")
 
     return parser
 
@@ -116,6 +130,64 @@ def cmd_calibrate(args, device_cfg: DeviceConfig, seq_cfg: SequenceConfig) -> No
     print("Note which end is extended and which is flexed, then edit config/gestures.yaml.")
 
 
+def cmd_force(args, device_cfg: DeviceConfig, dry_run: bool) -> None:
+    print("          " + " ".join(f"{finger:>7s}" for finger in FINGERS))
+    with open_hand(device_cfg, dry_run=dry_run) as hand:
+        end = time.monotonic() + args.duration
+        while time.monotonic() < end:
+            metrics = hand.read_force()
+            print("  " + " ".join(f"{metrics[finger]:7d}" for finger in FINGERS))
+            time.sleep(args.interval)
+
+
+def cmd_grasp(args, gestures: dict, device_cfg: DeviceConfig,
+              seq_cfg: SequenceConfig, dry_run: bool) -> None:
+    config = GraspConfig.from_dict(load_grasp())
+    if args.target:
+        config.target = args.target
+    if args.steps is not None:
+        config.steps = args.steps
+    if args.interval is not None:
+        config.interval = args.interval
+    if args.threshold is not None:
+        config.threshold = args.threshold
+    if args.hold is not None:
+        config.hold = args.hold
+    if args.fingers:
+        config.fingers = tuple(item.strip() for item in args.fingers.split(",") if item.strip())
+
+    if config.target not in gestures:
+        raise SystemExit(f"unknown target gesture {config.target}; available: {sorted(gestures)}")
+    unknown = [finger for finger in config.fingers if finger not in FINGERS]
+    if unknown:
+        raise SystemExit(f"unknown fingers {unknown}; available: {', '.join(FINGERS)}")
+
+    if not args.no_wait and not dry_run:
+        wait_for_enter_or_ctrl_c()
+
+    with open_hand(device_cfg, dry_run=dry_run) as hand:
+        start = gestures["open"]["angles"]
+        current = hand.read_angles()
+        if any(value != value for value in current):  # dry-run before any command
+            current = list(start)
+        move_to(hand, start, current, seq_cfg.transition, seq_cfg.fps)
+        time.sleep(0.3)
+
+        result = close_until_contact(hand, start, gestures[config.target]["angles"], config)
+
+        if result["finger"]:
+            print(
+                f"contact: {result['finger']} +{result['delta']} "
+                f"at {result['ratio'] * 100:.0f}% closure"
+            )
+        else:
+            print(f"no contact within {config.steps} steps ({result['ratio'] * 100:.0f}% closure)")
+
+        time.sleep(config.hold)
+        print("releasing")
+        move_to(hand, start, result["angles"], seq_cfg.transition, seq_cfg.fps)
+
+
 def main(argv=None) -> None:
     args = build_parser().parse_args(argv)
     gestures = load_gestures()
@@ -132,3 +204,7 @@ def main(argv=None) -> None:
         cmd_check(args, device_cfg)
     elif args.command == "calibrate":
         cmd_calibrate(args, device_cfg, seq_cfg)
+    elif args.command == "force":
+        cmd_force(args, device_cfg, args.dry_run)
+    elif args.command == "grasp":
+        cmd_grasp(args, gestures, device_cfg, seq_cfg, args.dry_run)

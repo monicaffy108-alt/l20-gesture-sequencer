@@ -21,6 +21,7 @@ l20-gesture-sequencer/
 │   ├── joints.py         # joint order and range validation
 │   ├── config.py         # config loading
 │   ├── device.py         # hardware backend / dry-run backend
+│   ├── force.py          # per-finger pressure metrics, contact detection
 │   ├── sequence.py       # linear interpolation + timed updates
 │   └── cli.py            # command-line entry point
 └── requirements.txt
@@ -76,6 +77,24 @@ While `index_root1` sweeps from 0 to 100, note which end is extended and which i
 python -m l20_gestures run --sequence relax,open,fist,open,point,ok,thumbs_up,open --transition 0.8 --hold 1.2
 ```
 
+### Closed-loop grasp
+
+```bash
+# Read live pressure per finger, to pick a threshold
+python -m l20_gestures force --duration 5
+
+# Close until a finger touches, hold, then release
+python -m l20_gestures grasp --target fist --threshold 30
+```
+
+The loop captures a pressure baseline in the open pose, then closes in fixed increments. As soon as any monitored finger rises above `threshold`, closing stops, the hand backs off one increment (so the object is held rather than crushed), holds for `grasp.hold`, and returns to the open pose.
+
+Thresholds are raw sensor units (0-255), so they must be calibrated per hand with `force`. Restrict which fingers trigger the stop:
+
+```bash
+python -m l20_gestures grasp --fingers thumb,index --threshold 40
+```
+
 Command-line flags temporarily override the config:
 
 ```bash
@@ -92,6 +111,11 @@ Every gesture was executed on a physical L20 (left hand, Windows + PCAN-USB) and
 | fist | Passing | All five fingers close fully, no gap |
 | ok | Passing | Thumb `abd=65 / yaw=70 / root1=40 / tip=25`, index `32/28` |
 | pinch | Pending | Thumb reuses the tuned `ok` values; index and middle not tuned separately |
+
+| Feature | Status |
+|---------|--------|
+| `grasp` closed loop (synthetic sensor) | Verified with `--dry-run`; stops at 40% closure |
+| `grasp` closed loop (real sensor) | Not yet measured; threshold needs calibration with `force` |
 
 Tuning history is recorded in the comments of `config/gestures.yaml`: thumb rotation `yaw` settled at 70 (30 was too far inward, 95 too far outward) and abduction `abd` at 65.
 
@@ -119,12 +143,12 @@ python -c "import can;print(can.detect_available_configs())"
 ## Known limitations
 
 - Value direction depends on firmware version; always confirm with `calibrate` on the target hand first
-- Position control is open-loop — no force-sensor feedback yet (next step)
+- Position control is open-loop; the `grasp` command adds contact feedback, but there is no closed-loop position tracking yet
 - Interpolation is linear; if the motion looks jerky, lower `fps` or increase `transition`
 
 ## Roadmap
 
 - [x] Gesture sequences + interpolation + CLI
-- [ ] Force-sensor closed loop: stop closing on contact
+- [x] Force-sensor closed loop: stop closing on contact
 - [ ] URDF + MuJoCo synchronized playback (same commands, simulation and hardware side by side)
 - [ ] RealSense + MediaPipe hand keypoints → joint angle mapping

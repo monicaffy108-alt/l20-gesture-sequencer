@@ -9,6 +9,7 @@ from __future__ import annotations
 import sys
 from dataclasses import dataclass
 
+from .force import FINGERS, flexion
 from .joints import JOINT_NAMES, NUM_JOINTS, validate
 
 
@@ -51,6 +52,15 @@ class DryRunHand:
 
     def read_angles(self) -> list[float]:
         return list(self._last)
+
+    def read_force(self) -> dict[str, int]:
+        """Synthetic pressure: a finger starts reading non-zero at 30% flexion."""
+        if any(value != value for value in self._last):  # NaN before the first command
+            return {finger: 0 for finger in FINGERS}
+        return {
+            finger: min(255, max(0, int((flexion(self._last, finger) - 30) * 3)))
+            for finger in FINGERS
+        }
 
 
 class LinkerHand:
@@ -100,6 +110,17 @@ class LinkerHand:
     def read_angles(self) -> list[float]:
         data = self._hand.angle.get_blocking(timeout_ms=500)
         return validate(data.angles.to_list())
+
+    def read_force(self) -> dict[str, int]:
+        """Peak pressure cell per finger, as raw units (0-255).
+
+        Uses the cached snapshot filled by the SDK's 30 Hz polling loop and
+        falls back to a blocking read before the cache is warm.
+        """
+        snapshot = self._hand.force_sensor.get_snapshot()
+        if snapshot is None:
+            snapshot = self._hand.force_sensor.get_blocking(timeout_ms=800)
+        return {finger: int(getattr(snapshot, finger).values.max()) for finger in FINGERS}
 
 
 def open_hand(config: DeviceConfig, dry_run: bool = False):
