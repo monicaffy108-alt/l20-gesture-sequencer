@@ -1,0 +1,20 @@
+# 设备连接配置
+#
+# Windows + PEAK PCAN：
+#   interface_type: "pcan"
+#   interface_name: "PCAN_USBBUS1"
+#
+# Ubuntu + SocketCAN：
+#   interface_type: "socketcan"
+#   interface_name: "can0"
+#   先在终端执行：sudo ip link set can0 type can bitrate 1000000 && sudo ip link set can0 up
+
+device:
+  side: "left"              # 左手 left / 右手 right
+  interface_type: "pcan"
+  interface_name: "PCAN_USBBUS1"
+
+sequence:
+  fps: 25                   # 指令下发频率，25-50 之间比较稳
+  transition: 0.6           # 两个手势之间的过渡时长（秒）
+  hold: 0.8                 # 每个手势保持时长（秒）

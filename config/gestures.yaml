@@ -1,0 +1,43 @@
+# L20 手势定义
+#
+# 每个手势是 16 个关节值，范围 0-100。
+# 顺序固定为（与 joints.py 一致）：
+#   thumb_abd, thumb_yaw, thumb_root1, thumb_tip,
+#   index_abd, index_root1, index_tip,
+#   middle_abd, middle_root1, middle_tip,
+#   ring_abd, ring_root1, ring_tip,
+#   pinky_abd, pinky_root1, pinky_tip
+#
+# 重要：数值方向（0 是伸直还是弯曲）需要用 `python -m l20_gestures calibrate`
+# 在真机上确认，不同固件版本方向可能相反。
+# 下面这套按「100 = 伸直，0 = 完全弯曲」编写。
+
+gestures:
+  open:
+    desc: 五指张开
+    angles: [100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100]
+
+  fist:
+    desc: 握拳
+    angles: [100, 50, 0, 0, 50, 0, 0, 50, 0, 0, 50, 0, 0, 50, 0, 0]
+
+  relax:
+    desc: 自然微曲（安全初始位）
+    angles: [70, 50, 65, 70, 50, 65, 70, 50, 65, 70, 50, 65, 70, 50, 65, 70]
+
+  point:
+    desc: 食指指向
+    angles: [100, 50, 100, 100, 50, 100, 100, 50, 0, 0, 50, 0, 0, 50, 0, 0]
+
+  thumbs_up:
+    desc: 点赞（拇指伸出，其余握起）
+    angles: [100, 50, 100, 100, 35, 0, 0, 35, 0, 0, 35, 0, 0, 35, 0, 0]
+
+  # 真机调参结果：拇指 abd65 / yaw70 / root40 / tip25，食指 medium(32/28)
+  ok:
+    desc: OK 手势（拇指食指捏合）
+    angles: [65, 70, 40, 25, 60, 32, 28, 60, 100, 100, 60, 100, 100, 60, 100, 100]
+
+  pinch:
+    desc: 三指捏取
+    angles: [65, 70, 40, 25, 55, 45, 38, 55, 45, 38, 60, 100, 100, 60, 100, 100]
