@@ -22,7 +22,7 @@ SOURCES = ("force", "torque", "angle_error")
 @dataclass
 class GraspConfig:
     target: str = "fist"
-    source: str = "angle_error"
+    source: str = "force"
     steps: int = 20
     interval: float = 0.15
     # force: raw pressure delta (0-255 scale)
@@ -38,7 +38,7 @@ class GraspConfig:
     def from_dict(cls, data: dict) -> "GraspConfig":
         return cls(
             target=data.get("target", "fist"),
-            source=data.get("source", "angle_error"),
+            source=data.get("source", "force"),
             steps=int(data.get("steps", 20)),
             interval=float(data.get("interval", 0.15)),
             threshold=float(data.get("threshold", 30.0)),

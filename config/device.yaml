@@ -23,16 +23,16 @@ sequence:
 
 # Closed-loop grasp: close step by step and stop as soon as contact is
 # detected. `source` picks the signal:
+#   force       - fingertip pressure (verified on this unit: 0 empty, 80-127 pressed)
 #   angle_error - lag between commanded and measured angle (works on any hand)
-#   torque      - joint torque rise (0-100 units)
-#   force       - fingertip pressure (only on hands that report it)
+#   torque      - joint torque rise (constant on this unit regardless of load)
 grasp:
   target: "fist"            # gesture the hand closes towards
-  source: "angle_error"     # angle_error | torque | force
+  source: "force"           # force | angle_error | torque
   steps: 20                 # increments from open to target
   interval: 0.15            # seconds between increments
+  threshold: 30.0           # force: raw pressure delta counted as contact
   tolerance: 12.0           # angle_error: degrees counted as contact
   torque_threshold: 15.0    # torque: 0-100 unit rise counted as contact
-  threshold: 30.0           # force: raw pressure delta counted as contact
   fingers: ["thumb", "index", "middle", "ring", "pinky"]
   hold: 1.0                 # seconds to hold the grip after contact
