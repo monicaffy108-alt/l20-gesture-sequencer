@@ -2,7 +2,8 @@
 
 Drive a [LinkerHand L20](https://www.linkerhand.com/) 16-DoF dexterous hand from code instead of dragging sliders in a GUI: smooth interpolation between gestures, YAML-based presets, and on-hardware calibration tools.
 
-**Demo (22 s, real hardware)**: [media/l20_gesture_sequence_demo.mp4](media/l20_gesture_sequence_demo.mp4)
+**Gesture sequence (22 s, real hardware)**: [media/l20_gesture_sequence_demo.mp4](media/l20_gesture_sequence_demo.mp4)  
+**Closed-loop grasp** *(coming soon — YouTube)*: fingertip-pressure-based contact detection, stops at 55% closure
 
 ## Why this exists
 
@@ -133,6 +134,33 @@ Tuning history is recorded in the comments of `config/gestures.yaml`: thumb rota
 2. **Label the gestures** — annotate each pose so the sequence reads clearly (open → fist → OK → thumbs up → open)
 3. **Multiple angles** — one frontal take and one side take; the side view shows joint angles best
 4. Keep the normal exit or `Ctrl+C` at the end, so it is visibly a real run rather than an edit
+
+## Video caption (YouTube)
+
+Suggested on-screen text card and spoken subtitles, American English:
+
+```
+Project: L20 Gesture Sequencer with Tactile-Closed-Loop Grasping
+Hardware: LinkerHand L20 Dexterous Hand (16 active DoF)
+Contact signal: Fingertip pressure sensor, threshold = 30 (0-255 scale)
+Result: Grasps detected at 55% closure, object held without crushing
+```
+
+| Spoken subtitle | Notes |
+|----------------|-------|
+| "No-load baseline shows near-zero pressure across all fingers" | Free hand in air |
+| "Under firm fingertip contact, pressure rises to 80-127 on the raw 0-255 scale" | Calibration shot |
+| "A 20-step closure stops as soon as any finger crosses threshold 30" | Grasp loop |
+| "Contact detected — thumb 82 at 55% closure" | Terminal echo |
+| "Back off one step, hold, then release" | Shows the grip, not a crush |
+
+## Interview talking points
+
+If asked about implementation details, the polling-vs-snapshot pitfall is a good story to tell:
+
+> "One subtle issue I found when integrating the pressure sensor was that the SDK's 30 Hz polling loop and one-off blocking requests contend on the CAN bus. When I called `get_blocking()` to read the 12×6 fingertip matrices, the poller had already consumed every reply, so I got all-zero matrices even under firm contact. The fix was simple — read from the polling snapshot instead. It's a small pitfall, but it illustrates how hardware integration often hinges on understanding the middleware's threading model, not just the sensor API."
+
+Key terms you should be able to explain: polling, snapshot, CAN bus arbitration, tactile pressure matrix, force threshold calibration.
 
 ## Troubleshooting
 
