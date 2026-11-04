@@ -63,6 +63,20 @@ def build_parser() -> argparse.ArgumentParser:
     torque.add_argument("--duration", type=float, default=5.0, help="seconds to sample")
     torque.add_argument("--interval", type=float, default=0.1, help="seconds between samples")
 
+    sim = sub.add_parser("sim", help="mirror the hand or replay gestures in MuJoCo")
+    sim.add_argument("--sequence", help="comma-separated gestures; omit to mirror the real hand")
+    sim.add_argument("--drive", action="store_true",
+                     help="also command the real hand, so both sides move together")
+    sim.add_argument("--measured", action="store_true",
+                     help="with --drive: render the measured (encoder) angles, not the commanded ones")
+    sim.add_argument("--render-dir", help="write PNG frames instead of opening a viewer")
+    sim.add_argument("--model", help="model path (default: assets/linkerhand_l20/l20_left.xml)")
+    sim.add_argument("--seconds", type=float, help="mirror mode: stop after N seconds")
+    sim.add_argument("--fps", type=float, default=30.0, help="mirror mode refresh rate")
+    sim.add_argument("--width", type=int, default=640, help="offscreen frame width")
+    sim.add_argument("--height", type=int, default=480, help="offscreen frame height")
+    sim.add_argument("--no-wait", action="store_true", help="skip the Enter confirmation")
+
     return parser
 
 
@@ -234,6 +248,48 @@ def cmd_grasp(args, gestures: dict, device_cfg: DeviceConfig,
         move_to(hand, start, result["angles"], seq_cfg.transition, seq_cfg.fps)
 
 
+def cmd_sim(args, gestures: dict, device_cfg: DeviceConfig, seq_cfg: SequenceConfig,
+            dry_run: bool) -> None:
+    from contextlib import ExitStack
+
+    try:
+        import mujoco
+        import mujoco.viewer  # not imported by `import mujoco` alone
+    except ImportError:
+        raise SystemExit("mujoco is not installed. Install it with: pip install mujoco")
+
+    from .sim import DEFAULT_MODEL, HandModel, SimHand, mirror, render_sequence
+
+    model = HandModel(args.model or DEFAULT_MODEL)
+    names = [item.strip() for item in args.sequence.split(",") if item.strip()] if args.sequence else []
+
+    if args.render_dir:
+        if not names:
+            raise SystemExit("--render-dir needs --sequence; nothing to animate otherwise")
+        frames = render_sequence(model, gestures, names, seq_cfg, args.render_dir,
+                                 args.width, args.height)
+        print(f"rendered {frames} frames to {args.render_dir}")
+        return
+
+    if not names and dry_run:
+        raise SystemExit("mirror mode reads the real hand; use --sequence with --dry-run")
+
+    if names and not args.no_wait and not dry_run:
+        wait_for_enter_or_ctrl_c()
+
+    with mujoco.viewer.launch_passive(model.model, model.data) as viewer:
+        model.camera(viewer)
+        if names:
+            with ExitStack() as stack:
+                hand = stack.enter_context(open_hand(device_cfg)) if args.drive and not dry_run else None
+                run_sequence(SimHand(model, hand, viewer, measured=args.measured),
+                             gestures, names, seq_cfg)
+        else:
+            with open_hand(device_cfg) as hand:
+                print("Mirroring. Move the hand by hand; close the window or Ctrl+C to stop.")
+                mirror(model, hand, viewer, args.fps, args.seconds)
+
+
 def main(argv=None) -> None:
     args = build_parser().parse_args(argv)
     gestures = load_gestures()
@@ -256,3 +312,5 @@ def main(argv=None) -> None:
         cmd_torque(args, device_cfg, args.dry_run)
     elif args.command == "grasp":
         cmd_grasp(args, gestures, device_cfg, seq_cfg, args.dry_run)
+    elif args.command == "sim":
+        cmd_sim(args, gestures, device_cfg, seq_cfg, args.dry_run)

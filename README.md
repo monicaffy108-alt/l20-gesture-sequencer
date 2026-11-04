@@ -15,6 +15,8 @@ Planned extensions on this foundation: simulation playback, hand teleoperation, 
 
 ```
 l20-gesture-sequencer/
+├── assets/
+│   └── linkerhand_l20/   # official URDF + meshes, plus a lit MJCF export
 ├── config/
 │   ├── device.yaml       # hand side, CAN adapter type, sequence timing
 │   └── gestures.yaml     # 7 gestures as 16-dimensional joint vectors
@@ -24,6 +26,7 @@ l20-gesture-sequencer/
 │   ├── device.py         # hardware backend / dry-run backend
 │   ├── force.py          # contact signals: pressure, torque, tracking error
 │   ├── sequence.py       # linear interpolation + timed updates
+│   ├── sim.py            # SDK angles -> URDF joints, MuJoCo viewer and renderer
 │   └── cli.py            # command-line entry point
 └── requirements.txt
 ```
@@ -109,6 +112,40 @@ Command-line flags temporarily override the config:
 python -m l20_gestures --side right --interface-name PCAN_USBBUS1 run --sequence open,fist
 ```
 
+## Simulation (MuJoCo)
+
+The official URDF is loaded in MuJoCo and driven by the same 16 joint values the hand receives, so simulation and hardware can be recorded side by side.
+
+```bash
+# Replay gestures in the simulator, no hardware
+python -m l20_gestures --dry-run sim --sequence open,fist,ok --no-wait
+
+# Command the real hand and the simulator at the same time (side-by-side capture)
+python -m l20_gestures sim --sequence open,fist,ok --drive
+
+# Same, but the simulator renders the measured encoder angles instead of the
+# commanded ones — the sim visibly tracks where the hand actually is
+python -m l20_gestures sim --sequence open,fist,ok --drive --measured
+
+# Render frames to PNG instead of opening a window
+python -m l20_gestures sim --sequence open,fist,ok --render-dir sim_frames
+```
+
+Note on mirror mode (`sim` with no `--sequence`): it holds the CAN channel exclusively — PCAN allows only one process per channel — so it cannot run alongside a second terminal commanding the hand, and the fingers cannot be backdriven by hand while powered. Kept for dual-adapter setups; on a single adapter, use `--drive --measured` instead.
+
+How the mapping works:
+
+- The URDF has 21 revolute joints; the SDK exposes 16. The three DIP joints and the thumb IP are `<mimic>` joints in ROS, which the MuJoCo URDF importer does not evaluate, so `sim.py` writes them explicitly (factors taken from the URDF).
+- SDK values are 0-100 with 100 = fully extended; URDF expects radians with 0 = extended, so flexion is `range_max * (1 - value / 100)`.
+- The four abduction joints are symmetric about 0, so SDK 50 is the centre; their sign is flipped to match the URDF axis direction.
+- The URDF contains no lights, so an unlit render is black. `assets/linkerhand_l20/l20_left.xml` is the same model exported with `mj_saveLastXML` plus two directional lights. The camera is shared by the viewer and the renderer (see `CAMERA` in `sim.py`).
+
+Sign conventions were derived from the URDF axes and checked by rendering the known gestures; if a joint moves the wrong way on your hand, that is the table to look at.
+
+## Third-party assets
+
+`assets/linkerhand_l20/` is the L20 left-hand description from [linker-bot/linkerhand-urdf](https://github.com/linker-bot/linkerhand-urdf), licensed under Apache 2.0 (see `LICENSE-linkerhand-urdf` in that folder). The URDF is vendored unmodified; `l20_left.xml` is a generated export of it.
+
 ## Verification status
 
 Every gesture was executed on a physical L20 (left hand, Windows + PCAN-USB) and inspected visually:
@@ -186,5 +223,5 @@ python -c "import can;print(can.detect_available_configs())"
 
 - [x] Gesture sequences + interpolation + CLI
 - [x] Force-sensor closed loop: stop closing on contact
-- [ ] URDF + MuJoCo synchronized playback (same commands, simulation and hardware side by side)
+- [x] URDF + MuJoCo synchronized playback (same commands, simulation and hardware side by side)
 - [ ] RealSense + MediaPipe hand keypoints → joint angle mapping
