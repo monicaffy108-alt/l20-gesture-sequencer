@@ -94,6 +94,15 @@ class LinkerHand:
                 interface_type=self.config.interface_type,
             )
             self._hand.__enter__()
+            # The SDK auto-polls only angle (60 Hz) and force sensor (30 Hz).
+            # Add torque at a low rate; without it every torque read times out.
+            from linkerbot.hand.l25.events import SensorSource
+
+            self._hand.start_polling({
+                SensorSource.ANGLE: 1 / 60,
+                SensorSource.FORCE_SENSOR: 1 / 30,
+                SensorSource.TORQUE: 0.1,
+            })
         except Exception as exc:
             raise SystemExit(
                 f"connection failed: {exc}\n"
@@ -116,31 +125,39 @@ class LinkerHand:
         self._hand.angle.set_angles(values)
 
     def read_angles(self) -> list[float]:
-        data = self._hand.angle.get_blocking(timeout_ms=500)
+        data = self._hand.angle.get_snapshot()
+        if data is None:
+            data = self._hand.angle.get_blocking(timeout_ms=500)
         return validate(data.angles.to_list())
 
-    def read_force(self, fresh: bool = False) -> dict[str, int]:
+    def read_force(self) -> dict[str, int]:
         """Peak pressure cell per finger, as raw units (0-255).
 
-        Uses the cached snapshot filled by the SDK's 30 Hz polling loop. With
-        ``fresh=True`` it issues a blocking request instead, which bypasses a
-        possibly stale cache.
+        The SDK polls the force sensor at 30 Hz, so the snapshot is fresh;
+        fall back to a blocking request only before the first poll cycle.
         """
-        snapshot = None
-        if not fresh:
-            snapshot = self._hand.force_sensor.get_snapshot()
-        if snapshot is None:
-            snapshot = self._hand.force_sensor.get_blocking(timeout_ms=800)
-        return {finger: int(getattr(snapshot, finger).values.max()) for finger in FINGERS}
+        data = self._hand.force_sensor.get_snapshot()
+        if data is None:
+            data = self._hand.force_sensor.get_blocking(timeout_ms=800)
+        return {finger: int(getattr(data, finger).values.max()) for finger in FINGERS}
 
     def read_force_matrices(self) -> dict:
-        """Raw 12x6 sensor matrices per finger, from a blocking request."""
-        data = self._hand.force_sensor.get_blocking(timeout_ms=1000)
+        """Raw 12x6 sensor matrices per finger."""
+        data = self._hand.force_sensor.get_snapshot()
+        if data is None:
+            data = self._hand.force_sensor.get_blocking(timeout_ms=1000)
         return {finger: getattr(data, finger).values for finger in FINGERS}
 
     def read_torque(self) -> list[float]:
-        """Joint torques in the same order as JOINT_NAMES."""
-        data = self._hand.torque.get_blocking(timeout_ms=800)
+        """Joint torques in the same order as JOINT_NAMES.
+
+        Torque is polled at 10 Hz (added in __enter__), so the snapshot is
+        normally populated; get_blocking would contend with the polling loop
+        on the CAN bus and intermittently time out.
+        """
+        data = self._hand.torque.get_snapshot()
+        if data is None:
+            data = self._hand.torque.get_blocking(timeout_ms=800)
         return validate(data.torques.to_list())
 
 

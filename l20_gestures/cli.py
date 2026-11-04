@@ -161,7 +161,7 @@ def cmd_force(args, device_cfg: DeviceConfig, dry_run: bool) -> None:
                         cells.append(f"{int(matrix.max()):>7d}/{int(matrix.sum()):<7d}")
                 print("  " + " ".join(cells))
             else:
-                metrics = hand.read_force(fresh=True)
+                metrics = hand.read_force()
                 print("  " + " ".join(f"{metrics[finger]:7d}" for finger in FINGERS))
             time.sleep(args.interval)
 
@@ -171,8 +171,12 @@ def cmd_torque(args, device_cfg: DeviceConfig, dry_run: bool) -> None:
     with open_hand(device_cfg, dry_run=dry_run) as hand:
         end = time.monotonic() + args.duration
         while time.monotonic() < end:
-            metrics = torque_metrics(hand.read_torque())
-            print("  " + " ".join(f"{metrics[finger]:7.1f}" for finger in FINGERS))
+            try:
+                metrics = torque_metrics(hand.read_torque())
+            except TimeoutError:
+                print("  (no torque data - device did not respond)")
+            else:
+                print("  " + " ".join(f"{metrics[finger]:7.1f}" for finger in FINGERS))
             time.sleep(args.interval)
 
 
