@@ -3,7 +3,7 @@
 Drive a [LinkerHand L20](https://www.linkerhand.com/) 16-DoF dexterous hand from code instead of dragging sliders in a GUI: smooth interpolation between gestures, YAML-based presets, and on-hardware calibration tools.
 
 **Gesture sequence (22 s, real hardware)**: [media/l20_gesture_sequence_demo.mp4](media/l20_gesture_sequence_demo.mp4)  
-**Closed-loop grasp** *(coming soon — YouTube)*: fingertip-pressure-based contact detection, stops at 55% closure
+**Closed-loop grasp (YouTube Shorts)**: https://youtube.com/shorts/fceqbrzrN8s — fingertip-pressure-based contact detection, stops at 55% closure; local copy also at `media/`
 
 ## Why this exists
 
