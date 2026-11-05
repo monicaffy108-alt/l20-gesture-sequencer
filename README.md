@@ -16,7 +16,8 @@ Planned extensions on this foundation: simulation playback, hand teleoperation, 
 ```
 l20-gesture-sequencer/
 ├── assets/
-│   └── linkerhand_l20/   # official URDF + meshes, plus a lit MJCF export
+│   ├── linkerhand_l20/   # official URDF + meshes, plus a lit MJCF export
+│   └── models/           # MediaPipe hand landmark model
 ├── config/
 │   ├── device.yaml       # hand side, CAN adapter type, sequence timing
 │   └── gestures.yaml     # 7 gestures as 16-dimensional joint vectors
@@ -27,6 +28,7 @@ l20-gesture-sequencer/
 │   ├── force.py          # contact signals: pressure, torque, tracking error
 │   ├── sequence.py       # linear interpolation + timed updates
 │   ├── sim.py            # SDK angles -> URDF joints, MuJoCo viewer and renderer
+│   ├── teleop.py         # camera hand tracking -> 16 joint values
 │   └── cli.py            # command-line entry point
 └── requirements.txt
 ```
@@ -142,6 +144,50 @@ How the mapping works:
 
 Sign conventions were derived from the URDF axes and checked by rendering the known gestures; if a joint moves the wrong way on your hand, that is the table to look at.
 
+## Hand teleoperation
+
+MediaPipe tracks a human hand in the camera image, the landmark geometry is converted to the same 16 joint values the rest of this package uses, and the hand follows in real time. No depth data is needed — the 2D landmarks are enough to recover finger flexion and lateral spread.
+
+```bash
+# RealSense (default). Preview window plus a live readout per joint
+python -m l20_gestures teleop
+
+# Plain webcam
+python -m l20_gestures teleop --camera webcam --device-id 0
+
+# Camera only, no hand movement — useful for checking the mapping first
+python -m l20_gestures --dry-run teleop --no-preview --duration 5
+```
+
+Download the model once (it is not committed, ~7.5 MB):
+
+```bash
+mkdir -p assets/models
+curl -L -o assets/models/hand_landmarker.task \
+  https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task
+```
+
+How the 21 landmarks become 16 joints:
+
+| Signal | Measurement |
+|--------|-------------|
+| `*_root1` | smaller of the MCP angle (wrist-MCP-PIP) and the PIP angle (MCP-PIP-DIP). 2D projection foreshortens MCP rotation, so taking the minimum keeps a closed fist closed |
+| `*_tip` | PIP angle (MCP-PIP-DIP). The DIP joint is the URDF mimic and is not measured separately |
+| `*_abd` (four fingers) | signed lateral angle of each finger away from the middle finger, faded towards neutral as the finger curls (a closed fist collapses the projected knuckles, so the raw reading is meaningless there) |
+| `thumb_abd` | opening angle between the thumb chain and the index chain |
+| `thumb_yaw / root1 / tip` | angles at the CMC, MCP and IP joints of the thumb |
+
+The mapping is deliberately in the 0-100 SDK space (100 = extended, 0 = flexed), so it composes with `gestures.yaml`, `grasp` and `sim`.
+
+Two filters keep the motion usable:
+
+- **EMA smoothing** (`--alpha`, default 0.5) removes landmark jitter
+- **Per-update clamp** (`--max-step`, default 6) limits how far a joint may move in one cycle, so a tracking glitch cannot slam a finger
+
+If tracking is lost the last pose is held rather than snapping to a default. `--no-mirror` disables the horizontal flip; mirroring is on by default because un-mirrored camera motion feels inverted to the operator.
+
+Note: `--mirror` flips handedness, so all lateral angles invert with it. Check the spread direction on the hardware once; if a finger abducts the wrong way, remove `--mirror` or negate `ABD_GAIN` in `teleop.py`.
+
 ## Third-party assets
 
 `assets/linkerhand_l20/` is the L20 left-hand description from [linker-bot/linkerhand-urdf](https://github.com/linker-bot/linkerhand-urdf), licensed under Apache 2.0 (see `LICENSE-linkerhand-urdf` in that folder). The URDF is vendored unmodified; `l20_left.xml` is a generated export of it.
@@ -162,6 +208,15 @@ Every gesture was executed on a physical L20 (left hand, Windows + PCAN-USB) and
 | `grasp` with `force` | **Verified on hardware** — contact at 55% closure, threshold 30 calibrated (empty: 0, press: 80-127) |
 | `grasp` with `angle_error` | Dry-run verified; hardware run pending |
 | `grasp` with `torque` | Not usable on this unit: torque is constant regardless of load |
+| `teleop` (RealSense D405 + MediaPipe) | **Verified on hardware** — 30 Hz tracking, hand follows the operator in real time |
+
+Measured tracking characteristics of the teleop mapping:
+
+| Signal | Result |
+|--------|--------|
+| Finger flexion (`root1`, `tip`) | Smooth and stable; a closed fist drives all four fingers to 0 |
+| Thumb flexion | Partial — the thumb curls towards the camera, so most of its motion lies along the optical axis and is lost in a monocular projection |
+| Lateral spread (`abd`) | Usable when the finger is extended; faded to neutral as it curls, because a closed fist collapses the projected knuckles |
 
 Tuning history is recorded in the comments of `config/gestures.yaml`: thumb rotation `yaw` settled at 70 (30 was too far inward, 95 too far outward) and abduction `abd` at 65.
 
@@ -213,6 +268,18 @@ python -c "import can;print(can.detect_available_configs())"
 
 `channel_condition` `1` means available, `2` means occupied.
 
+**RealSense enumerates but `wait_for_frames` times out**
+
+On a D405 this happened after the device came up on a stale USB mode: `query_devices` listed the camera, but only the stereo sensor was exposed and the color stream never delivered a frame. A hardware reset fixes it without unplugging:
+
+```python
+import pyrealsense2 as rs, time
+dev = list(rs.context().query_devices())[0]
+dev.hardware_reset(); time.sleep(6)
+```
+
+After the reset the device reported USB 3.2 and `enable_stream(rs.stream.color, ...)` worked. If it still fails, move the cable to a USB 3 port — on USB 2 the color sensor may not enumerate at all.
+
 ## Known limitations
 
 - Value direction depends on firmware version; always confirm with `calibrate` on the target hand first
@@ -224,4 +291,5 @@ python -c "import can;print(can.detect_available_configs())"
 - [x] Gesture sequences + interpolation + CLI
 - [x] Force-sensor closed loop: stop closing on contact
 - [x] URDF + MuJoCo synchronized playback (same commands, simulation and hardware side by side)
-- [ ] RealSense + MediaPipe hand keypoints → joint angle mapping
+- [x] RealSense + MediaPipe hand keypoints → joint angle mapping (`teleop`)
+- [ ] Record teleop episodes in LeRobot dataset format and train a policy (ACT / π₀)

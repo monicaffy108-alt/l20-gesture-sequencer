@@ -77,6 +77,19 @@ def build_parser() -> argparse.ArgumentParser:
     sim.add_argument("--height", type=int, default=480, help="offscreen frame height")
     sim.add_argument("--no-wait", action="store_true", help="skip the Enter confirmation")
 
+    teleop = sub.add_parser("teleop", help="drive the hand from your own hand via a camera")
+    teleop.add_argument("--camera", choices=["realsense", "webcam"], default="realsense")
+    teleop.add_argument("--device-id", type=int, default=0, help="webcam index (webcam only)")
+    teleop.add_argument("--model", help="path to hand_landmarker.task")
+    teleop.add_argument("--alpha", type=float, default=0.5, help="smoothing 0-1; lower is smoother")
+    teleop.add_argument("--max-step", type=float, default=6.0,
+                        help="max joint change per update (0-100 units)")
+    teleop.add_argument("--no-mirror", action="store_true", help="do not flip the camera image")
+    teleop.add_argument("--no-preview", action="store_true", help="no camera window")
+    teleop.add_argument("--duration", type=float, help="stop after N seconds")
+    teleop.add_argument("--fps", type=float, default=30.0, help="command rate to the hand")
+    teleop.add_argument("--no-wait", action="store_true", help="skip the Enter confirmation")
+
     return parser
 
 
@@ -290,6 +303,34 @@ def cmd_sim(args, gestures: dict, device_cfg: DeviceConfig, seq_cfg: SequenceCon
                 mirror(model, hand, viewer, args.fps, args.seconds)
 
 
+def cmd_teleop(args, device_cfg: DeviceConfig, gestures: dict, seq_cfg: SequenceConfig,
+               dry_run: bool) -> None:
+    from .teleop import DEFAULT_MODEL, run_teleop
+
+    if not args.no_wait and not dry_run:
+        wait_for_enter_or_ctrl_c()
+
+    start = gestures["open"]["angles"]
+    with open_hand(device_cfg, dry_run=dry_run) as hand:
+        current = hand.read_angles()
+        if any(value != value for value in current):  # dry-run before any command
+            current = list(start)
+        move_to(hand, start, current, seq_cfg.transition, seq_cfg.fps)
+        run_teleop(
+            hand,
+            backend=args.camera,
+            device_id=args.device_id,
+            model_path=args.model or DEFAULT_MODEL,
+            alpha=args.alpha,
+            max_step=args.max_step,
+            mirror=not args.no_mirror,
+            preview=not args.no_preview,
+            duration=args.duration,
+            fps_limit=args.fps,
+            start_pose=list(start),
+        )
+
+
 def main(argv=None) -> None:
     args = build_parser().parse_args(argv)
     gestures = load_gestures()
@@ -314,3 +355,5 @@ def main(argv=None) -> None:
         cmd_grasp(args, gestures, device_cfg, seq_cfg, args.dry_run)
     elif args.command == "sim":
         cmd_sim(args, gestures, device_cfg, seq_cfg, args.dry_run)
+    elif args.command == "teleop":
+        cmd_teleop(args, device_cfg, gestures, seq_cfg, args.dry_run)
