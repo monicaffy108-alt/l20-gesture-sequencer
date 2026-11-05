@@ -350,6 +350,7 @@ After the reset the device reported USB 3.2 and `enable_stream(rs.stream.color, 
 
 ## Known limitations
 
+- `thumb_root1` does not respond through this SDK on the test unit: the encoder reports a constant 0 and no position command moves the joint, while the vendor console drives it without issue. The byte position is not the cause — both this SDK and the vendor's ROS 2 SDK put `thumb_root1` in the third data byte of frame `0x41` (after roll and yaw) and read it back from the same slot. The remaining difference is that the ROS 2 SDK also exposes a parallel command set (`0x03 ROOT1_POS`, one value per finger), which the console most likely uses. The pose library does not rely on this axis — `thumb_yaw`, `thumb_abd` and `thumb_tip` produce the thumb shapes
 - Value direction depends on firmware version; always confirm with `calibrate` on the target hand first
 - Position control is open-loop; the `grasp` command adds contact feedback, but there is no closed-loop position tracking yet
 - Interpolation is linear; if the motion looks jerky, lower `fps` or increase `transition`
