@@ -218,6 +218,74 @@ Measured tracking characteristics of the teleop mapping:
 | Thumb flexion | Partial — the thumb curls towards the camera, so most of its motion lies along the optical axis and is lost in a monocular projection |
 | Lateral spread (`abd`) | Usable when the finger is extended; faded to neutral as it curls, because a closed fist collapses the projected knuckles |
 
+## Measured results
+
+All numbers below were produced by `python -m l20_gestures bench` on the same physical unit
+(left hand, Windows + PCAN-USB). Values are SDK units on the 0-100 scale unless noted.
+
+### Position tracking
+
+Each gesture was commanded, allowed to settle for 0.8 s, and then compared against the
+encoder reading.
+
+| Gesture | Mean error | Max error | Joint with the max |
+|---------|-----------|-----------|--------------------|
+| open | 6.6 | 100.0 | thumb_root1 |
+| fist | 4.5 | 47.8 | thumb_tip |
+| relax | 4.4 | 65.0 | thumb_root1 |
+| point | 6.7 | 100.0 | thumb_root1 |
+| thumbs_up | 10.2 | 100.0 | thumb_root1 |
+| ok | 2.9 | 40.0 | thumb_root1 |
+| pinch | 2.8 | 40.0 | thumb_root1 |
+
+Mean absolute error across all joints and gestures: **5.4**. RMS: 19.1, which is inflated
+almost entirely by `thumb_root1`: in the three poses that command the thumb fully extended,
+the encoder reports 0 instead of 100. The four finger chains track within a few units, and
+the two pinch poses (`ok`, `pinch`) track within 3 units on average.
+
+### Step response
+
+`index_root1`, commanded as a step from 0 to 100, sampled at 60 Hz, three runs of three
+repeats:
+
+| Metric | Value |
+|--------|-------|
+| Rise to 63% (`t63`) | 448 ms (all nine repeats between 447 and 465 ms) |
+| Rise to 90% (`t90`) | 606 ms (sd 9-19 ms across runs) |
+| Settled value | 91.4 (the joint saturates about 9 units below the command) |
+
+### Closed-loop grasp
+
+Twenty trials per object, closing towards `fist` from `open`, stopping on fingertip
+pressure above 30. The object was placed by hand in the palm before each trial, so its
+position varied between trials.
+
+| Object | Contact detected | Closure at contact | Load after back-off |
+|--------|------------------|--------------------|---------------------|
+| Bag of chips (soft, large) | 19/20 (95%) | 70.3% (sd 13.6) | 6/20 |
+| Water bottle (rigid) | 20/20 | 39.2% (sd 8.3) | 10/20 |
+
+Reading these numbers: the loop reliably detects contact and stops — 95% and 100% of
+trials — and the closure depth is repeatable within about 10 percentage points. The
+"load after back-off" column is not a grasp success rate: the loop backs off one
+increment by design so it never crushes, and whether a loosely-held object stays up
+depends on friction and on where it happened to be placed. A soft bag also registers
+contact early (70% closure) merely by touching the palm, before the fingers can wrap it.
+
+## Benchmarks
+
+```bash
+# Steady-state tracking error across all gestures
+python -m l20_gestures bench --test tracking
+
+# Step response of a single joint
+python -m l20_gestures bench --test step --joint index_root1
+
+# Repeat the closed-loop grasp and count contacts
+python -m l20_gestures bench --test grasp --trials 20
+```
+
+
 Tuning history is recorded in the comments of `config/gestures.yaml`: thumb rotation `yaw` settled at 70 (30 was too far inward, 95 too far outward) and abduction `abd` at 65.
 
 ## Recording tips

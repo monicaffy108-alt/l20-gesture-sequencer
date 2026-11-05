@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import time
 
+from .bench import run as bench_run
 from .config import load_device, load_gestures, load_grasp
 from .device import DeviceConfig, open_hand, wait_for_enter_or_ctrl_c
 from .force import FINGERS, SOURCES, GraspConfig, close_until_contact, torque_metrics
@@ -89,6 +90,13 @@ def build_parser() -> argparse.ArgumentParser:
     teleop.add_argument("--duration", type=float, help="stop after N seconds")
     teleop.add_argument("--fps", type=float, default=30.0, help="command rate to the hand")
     teleop.add_argument("--no-wait", action="store_true", help="skip the Enter confirmation")
+
+    bench = sub.add_parser("bench", help="measure repeatability, step response, tracking error")
+    bench.add_argument("--test", choices=["grasp", "step", "tracking", "all"], default="all")
+    bench.add_argument("--trials", type=int, default=10, help="grasp repeats")
+    bench.add_argument("--joint", default="index_root1", help="joint used for the step test")
+    bench.add_argument("--target", help="gesture to close towards during grasp trials")
+    bench.add_argument("--no-wait", action="store_true", help="skip the Enter confirmation")
 
     return parser
 
@@ -331,6 +339,25 @@ def cmd_teleop(args, device_cfg: DeviceConfig, gestures: dict, seq_cfg: Sequence
         )
 
 
+def cmd_bench(args, gestures: dict, device_cfg: DeviceConfig,
+              seq_cfg: SequenceConfig) -> None:
+    config = GraspConfig.from_dict(load_grasp())
+    if args.target:
+        config.target = args.target
+    if config.target not in gestures:
+        raise SystemExit(f"unknown target gesture {config.target}; available: {sorted(gestures)}")
+
+    if args.dry_run:
+        print("note: --dry-run returns the commanded values, so every number below is synthetic\n")
+
+    if not args.no_wait and not args.dry_run:
+        wait_for_enter_or_ctrl_c()
+
+    with open_hand(device_cfg, dry_run=args.dry_run) as hand:
+        bench_run(hand, gestures, args.test, config=config, seq_cfg=seq_cfg,
+                  trials=args.trials, joint=args.joint)
+
+
 def main(argv=None) -> None:
     args = build_parser().parse_args(argv)
     gestures = load_gestures()
@@ -357,3 +384,5 @@ def main(argv=None) -> None:
         cmd_sim(args, gestures, device_cfg, seq_cfg, args.dry_run)
     elif args.command == "teleop":
         cmd_teleop(args, device_cfg, gestures, seq_cfg, args.dry_run)
+    elif args.command == "bench":
+        cmd_bench(args, gestures, device_cfg, seq_cfg)
