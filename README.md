@@ -1,5 +1,14 @@
 # L20 Gesture Sequencer
 
+<p align="center">
+  <img src="https://img.shields.io/badge/hardware-LinkerHand_L20-orange" alt="LinkerHand L20">
+  <img src="https://img.shields.io/badge/simulation-MuJoCo-red" alt="MuJoCo">
+  <img src="https://img.shields.io/badge/vision-MediaPipe-green" alt="MediaPipe">
+  <img src="https://img.shields.io/badge/sensor-RealSense_D405-teal" alt="RealSense D405">
+  <img src="https://img.shields.io/badge/platform-Windows_%7C_Linux-lightgrey" alt="Windows | Linux">
+  <img src="https://img.shields.io/badge/Python-blue?logo=python&logoColor=white" alt="Python">
+</p>
+
 Drive a [LinkerHand L20](https://www.linkerhand.com/) 16-DoF dexterous hand from code instead of dragging sliders in a GUI: smooth interpolation between gestures, YAML-based presets, and on-hardware calibration tools.
 
 **Gesture sequence (22 s, real hardware)**: [media/l20_gesture_sequence_demo.mp4](media/l20_gesture_sequence_demo.mp4)  
