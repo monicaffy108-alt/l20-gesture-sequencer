@@ -9,6 +9,10 @@
   <img src="https://img.shields.io/badge/Python-blue?logo=python&logoColor=white" alt="Python">
 </p>
 
+<p align="center">
+  <img src="media/gesture_sequence.gif" width="420" alt="L20 hand performing a gesture sequence">
+</p>
+
 Drive a [LinkerHand L20](https://www.linkerhand.com/) 16-DoF dexterous hand from code instead of dragging sliders in a GUI: smooth interpolation between gestures, YAML-based presets, and on-hardware calibration tools.
 
 **Videos (YouTube Shorts)**
