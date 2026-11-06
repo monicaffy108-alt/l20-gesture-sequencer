@@ -11,8 +11,15 @@
 
 Drive a [LinkerHand L20](https://www.linkerhand.com/) 16-DoF dexterous hand from code instead of dragging sliders in a GUI: smooth interpolation between gestures, YAML-based presets, and on-hardware calibration tools.
 
-**Gesture sequence (22 s, real hardware)**: [media/l20_gesture_sequence_demo.mp4](media/l20_gesture_sequence_demo.mp4)  
-**Closed-loop grasp (YouTube Shorts)**: https://youtube.com/shorts/fceqbrzrN8s — fingertip-pressure-based contact detection, stops at 55% closure; local copy also at `media/`
+**Videos (YouTube Shorts)**
+
+| Demo | Link |
+|---|---|
+| Gesture sequence, 8 poses on real hardware | local copy at `media/l20_gesture_sequence_demo.mp4` |
+| Closed-loop tactile grasp, stops at contact | https://youtube.com/shorts/fceqbrzrN8s |
+| Sim-to-real mirror, one command drives MuJoCo and the hand | https://youtube.com/shorts/9K_jaffj3Mo |
+| Simulate first, then touch hardware (bring-up workflow) | https://youtube.com/shorts/pi_If55jU0s |
+| MediaPipe teleoperation, one RGB camera | https://youtube.com/shorts/zeQg_Gx8MFg |
 
 ## Why this exists
 
